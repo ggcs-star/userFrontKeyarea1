@@ -31,7 +31,6 @@ public function index()
     }
 
     $areas = collect($ahmedabad['areas'])->map(function ($area) {
-        // Count matching projects in this area
         $projectCount = Project::where('project.location.city', 'Ahmedabad')
             ->where('project.location.area', $area['name'])
             ->count();

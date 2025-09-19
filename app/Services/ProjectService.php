@@ -6,7 +6,6 @@ use App\Models\Project;
 
 class ProjectService
 {
-    // Generic function to format any project collection
     public function formatProjects($projects)
     {
         return $projects->map(function ($project) {
@@ -14,7 +13,6 @@ class ProjectService
             $sizes = [];
             $price = null;
 
-            // Extract price from configuration
             foreach ($project->configuration as $configGroup) {
                 if (is_array($configGroup) && isset($configGroup['price'])) {
                     $price = $configGroup['price'];
@@ -22,7 +20,6 @@ class ProjectService
                 }
             }
 
-            // Extract sizes from configuration and nested configs
             foreach ($project->configuration as $configGroup) {
                 if (is_array($configGroup)) {
                     if (isset($configGroup['size'])) {
@@ -41,7 +38,6 @@ class ProjectService
                 ? min($sizes) . ' - ' . max($sizes) . ' Sq. ft.'
                 : null;
 
-            // Directly use the image paths from the database without prepending base URL
             $logoImageUrl = !empty($project->project['logo_image_id']) 
                 ? $project->project['logo_image_id']
                 : null;
@@ -70,7 +66,6 @@ class ProjectService
         })->values();
     }
 
-    // Convert price string to number
     public function convertPriceToNumber($priceString)
     {
         $priceString = strtolower(str_replace(',', '', $priceString));
