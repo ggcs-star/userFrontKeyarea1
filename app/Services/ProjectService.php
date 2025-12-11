@@ -1,26 +1,30 @@
 <?php
 
 namespace App\Services;
-
+  use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use App\Models\Project;
-
+use Illuminate\Support\Collection;
 class ProjectService
 {
-    public function formatProjects($projects)
-    {
-        return $projects->map(function ($project) {
+  
+
+public function formatProjects($projects)
+{
+    return $projects->map(function ($project) {
+        try {
+            set_time_limit(30); 
 
             $sizes = [];
             $price = null;
 
-            foreach ($project->configuration as $configGroup) {
+            foreach ($project->configuration ?? [] as $configGroup) {
                 if (is_array($configGroup) && isset($configGroup['price'])) {
                     $price = $configGroup['price'];
                     break;
-                }
+                } 
             }
 
-            foreach ($project->configuration as $configGroup) {
+            foreach ($project->configuration ?? [] as $configGroup) {
                 if (is_array($configGroup)) {
                     if (isset($configGroup['size'])) {
                         $sizes[] = (int) str_replace([' Sq. ft.', ','], '', $configGroup['size']);
@@ -38,19 +42,14 @@ class ProjectService
                 ? min($sizes) . ' - ' . max($sizes) . ' Sq. ft.'
                 : null;
 
-            $logoImageUrl = !empty($project->project['logo_image_id']) 
-                ? $project->project['logo_image_id']
-                : null;
-
-            $visualImageUrl = !empty($project->project['visual_image_id']) 
-                ? $project->project['visual_image_id']
-                : null;
+            $logoImageUrl = $project->project['logo_image_id'] ?? null;
+            $visualImageUrl = $project->project['visual_image_id'] ?? null;
 
             return [
-                'id' => (string) $project->_id,
+                'id' => (string) ($project->_id ?? ''),
                 'project' => [
-                    'name' => $project->project['name'],
-                    'type' => $project->project['type'],
+                    'name' => $project->project['name'] ?? 'Unknown',
+                    'type' => $project->project['type'] ?? null,
                     'logo_image_url' => $logoImageUrl,
                     'visual_image_url' => $visualImageUrl,
                     'location' => [
@@ -63,8 +62,104 @@ class ProjectService
                     'size' => $sizeRange,
                 ],
             ];
-        })->values();
+        } 
+        catch (ProcessTimedOutException $e) {
+            \Log::error("Project processing timeout: " . $e->getMessage(), [
+                'project_id' => $project->_id ?? null
+            ]);
+
+            return [
+                'id' => (string) ($project->_id ?? ''),
+                'project' => [
+                    'name' => $project->project['name'] ?? 'Unknown',
+                    'type' => $project->project['type'] ?? null,
+                    'logo_image_url' => $project->project['logo_image_id'] ?? null,
+                    'visual_image_url' => $project->project['visual_image_id'] ?? null,
+                    'location' => [
+                        'city' => $project->project['location']['city'] ?? null,
+                        'area' => $project->project['location']['area'] ?? null,
+                    ],
+                ],
+                'configuration' => [
+                    'price' => null,
+                    'size' => null,
+                ],
+                'message' => 'Project processing timed out.',
+            ];
+        }
+        catch (\Throwable $e) {
+            \Log::error("Project processing error: " . $e->getMessage(), [
+                'project_id' => $project->_id ?? null
+            ]);
+
+            return [
+                'id' => (string) ($project->_id ?? ''),
+                'project' => [
+                    'name' => $project->project['name'] ?? 'Unknown',
+                    'type' => $project->project['type'] ?? null,
+                    'logo_image_url' => $project->project['logo_image_id'] ?? null,
+                    'visual_image_url' => $project->project['visual_image_id'] ?? null,
+                    'location' => [
+                        'city' => $project->project['location']['city'] ?? null,
+                        'area' => $project->project['location']['area'] ?? null,
+                    ],
+                ],
+                'configuration' => [
+                    'price' => null,
+                    'size' => null,
+                ],
+                'message' => 'Some project details could not be processed safely.',
+            ];
+        }
+    })->values();
+}
+
+
+
+    public function extractAvailableFilters(Collection $projects): array
+{
+    try {
+        $cities = [];
+        $bhks = [];
+
+        foreach ($projects as $project) {
+            $city = $project->project['location']['city'] ?? null;
+            if (!empty($city)) {
+                $cities[] = $city;
+            }
+
+            if (!empty($project->configuration) && is_iterable($project->configuration)) {
+                foreach ($project->configuration as $type => $units) {
+                    if (is_array($units)) {
+                        foreach (array_keys($units) as $bhkType) {
+                            if (preg_match('/BHK$/i', $bhkType)) {
+                                $bhks[] = $bhkType;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return [
+            'city' => array_values(array_unique($cities)),
+            'bhk' => array_values(array_unique($bhks)),
+            'featured' => [true, false],
+            'emerging_property' => [true, false],
+            'emerging_area' => [true, false],
+        ];
+    } catch (\Throwable $e) {
+        return [
+            'city' => [],
+            'bhk' => [],
+            'featured' => [true, false],
+            'emerging_property' => [true, false],
+            'emerging_area' => [true, false],
+            'message' => 'Some filters could not be processed safely.' 
+        ];
     }
+}
+
 
     public function convertPriceToNumber($priceString)
     {

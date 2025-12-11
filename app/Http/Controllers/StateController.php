@@ -31,14 +31,15 @@ public function index()
     }
 
     $areas = collect($ahmedabad['areas'])->map(function ($area) {
+        $pattern = preg_quote($area['name'], '/'); 
         $projectCount = Project::where('project.location.city', 'Ahmedabad')
-            ->where('project.location.area', $area['name'])
+            ->where('project.location.area', 'regexp', "/{$pattern}/i")
             ->count();
 
         return [
             'name' => $area['name'],
             'img'  => asset($area['img']),
-            'total_projects'=> $projectCount
+            'total_projects' => $projectCount
         ];
     });
 
@@ -51,6 +52,8 @@ public function index()
         ]
     ]);
 }
+
+
 
 
 

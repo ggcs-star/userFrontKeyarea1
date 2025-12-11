@@ -34,12 +34,12 @@ return [
     */
 
     'connections' => [
-
-         'mongodb' => [
-    'driver'   => 'mongodb',
-    'dsn'      => env('MONGODB_URI', 'mongodb://127.0.0.1:27017/keyarea1'),
-    'database' => env('MONGODB_DATABASE', 'keyarea1'),
-],
+        
+        'mongodb' => [
+            'driver' => 'mongodb',
+            'dsn' => env('MONGODB_DSN'),
+            'database' => env('MONGODB_DATABASE'),
+        ],
 
         'sqlite' => [
             'driver' => 'sqlite',

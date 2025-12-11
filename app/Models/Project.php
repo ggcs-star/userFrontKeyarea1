@@ -17,5 +17,11 @@ class Project extends Model
         static::addGlobalScope('active', function (Builder $builder) {
             $builder->where('project.status', 'active');
         });
+         static::addGlobalScope('orderby', function (Builder $builder) {
+            $builder->orderBy('orderby', 'asc');
+        });
+        
     }
+
+    
 }
