@@ -1,81 +1,166 @@
 <?php
 
 namespace App\Services;
-
+  use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use App\Models\Project;
-
+use Illuminate\Support\Collection;
 class ProjectService
 {
-    protected string $pathPrefix = 'storage/assets/properties/devkunj/';
+  
 
-    // Generic function to format any project collection
-   public function formatProjects($projects)
+public function formatProjects($projects)
 {
     return $projects->map(function ($project) {
+        try {
+            set_time_limit(30); 
 
-        $sizes = [];
-        $price = null;
+            $sizes = [];
+            $price = null;
 
-        // ASSET_BASE_URL ko environment se le lo
-        $assetBaseUrl = env('ASSET_BASE_URL', 'http://127.0.0.1:8000');
-
-        // Extract price from configuration
-        foreach ($project->configuration as $configGroup) {
-            if (is_array($configGroup) && isset($configGroup['price'])) {
-                $price = $configGroup['price'];
-                break;
+            foreach ($project->configuration ?? [] as $configGroup) {
+                if (is_array($configGroup) && isset($configGroup['price'])) {
+                    $price = $configGroup['price'];
+                    break;
+                } 
             }
-        }
 
-        // Extract sizes from configuration and nested configs
-        foreach ($project->configuration as $configGroup) {
-            if (is_array($configGroup)) {
-                if (isset($configGroup['size'])) {
-                    $sizes[] = (int) str_replace([' Sq. ft.', ','], '', $configGroup['size']);
-                } else {
-                    foreach ($configGroup as $subConfig) {
-                        if (is_array($subConfig) && isset($subConfig['size'])) {
-                            $sizes[] = (int) str_replace([' Sq. ft.', ','], '', $subConfig['size']);
+            foreach ($project->configuration ?? [] as $configGroup) {
+                if (is_array($configGroup)) {
+                    if (isset($configGroup['size'])) {
+                        $sizes[] = (int) str_replace([' Sq. ft.', ','], '', $configGroup['size']);
+                    } else {
+                        foreach ($configGroup as $subConfig) {
+                            if (is_array($subConfig) && isset($subConfig['size'])) {
+                                $sizes[] = (int) str_replace([' Sq. ft.', ','], '', $subConfig['size']);
+                            }
+                        }
+                    }
+                }
+            }
+
+            $sizeRange = count($sizes) > 0
+                ? min($sizes) . ' - ' . max($sizes) . ' Sq. ft.'
+                : null;
+
+            $logoImageUrl = $project->project['logo_image_id'] ?? null;
+            $visualImageUrl = $project->project['visual_image_id'] ?? null;
+
+            return [
+                'id' => (string) ($project->_id ?? ''),
+                'project' => [
+                    'name' => $project->project['name'] ?? 'Unknown',
+                    'type' => $project->project['type'] ?? null,
+                    'logo_image_url' => $logoImageUrl,
+                    'visual_image_url' => $visualImageUrl,
+                    'location' => [
+                        'city' => $project->project['location']['city'] ?? null,
+                        'area' => $project->project['location']['area'] ?? null,
+                    ],
+                ],
+                'configuration' => [
+                    'price' => $price,
+                    'size' => $sizeRange,
+                ],
+            ];
+        } 
+        catch (ProcessTimedOutException $e) {
+            \Log::error("Project processing timeout: " . $e->getMessage(), [
+                'project_id' => $project->_id ?? null
+            ]);
+
+            return [
+                'id' => (string) ($project->_id ?? ''),
+                'project' => [
+                    'name' => $project->project['name'] ?? 'Unknown',
+                    'type' => $project->project['type'] ?? null,
+                    'logo_image_url' => $project->project['logo_image_id'] ?? null,
+                    'visual_image_url' => $project->project['visual_image_id'] ?? null,
+                    'location' => [
+                        'city' => $project->project['location']['city'] ?? null,
+                        'area' => $project->project['location']['area'] ?? null,
+                    ],
+                ],
+                'configuration' => [
+                    'price' => null,
+                    'size' => null,
+                ],
+                'message' => 'Project processing timed out.',
+            ];
+        }
+        catch (\Throwable $e) {
+            \Log::error("Project processing error: " . $e->getMessage(), [
+                'project_id' => $project->_id ?? null
+            ]);
+
+            return [
+                'id' => (string) ($project->_id ?? ''),
+                'project' => [
+                    'name' => $project->project['name'] ?? 'Unknown',
+                    'type' => $project->project['type'] ?? null,
+                    'logo_image_url' => $project->project['logo_image_id'] ?? null,
+                    'visual_image_url' => $project->project['visual_image_id'] ?? null,
+                    'location' => [
+                        'city' => $project->project['location']['city'] ?? null,
+                        'area' => $project->project['location']['area'] ?? null,
+                    ],
+                ],
+                'configuration' => [
+                    'price' => null,
+                    'size' => null,
+                ],
+                'message' => 'Some project details could not be processed safely.',
+            ];
+        }
+    })->values();
+}
+
+
+
+    public function extractAvailableFilters(Collection $projects): array
+{
+    try {
+        $cities = [];
+        $bhks = [];
+
+        foreach ($projects as $project) {
+            $city = $project->project['location']['city'] ?? null;
+            if (!empty($city)) {
+                $cities[] = $city;
+            }
+
+            if (!empty($project->configuration) && is_iterable($project->configuration)) {
+                foreach ($project->configuration as $type => $units) {
+                    if (is_array($units)) {
+                        foreach (array_keys($units) as $bhkType) {
+                            if (preg_match('/BHK$/i', $bhkType)) {
+                                $bhks[] = $bhkType;
+                            }
                         }
                     }
                 }
             }
         }
 
-        $sizeRange = count($sizes) > 0
-            ? min($sizes) . ' - ' . max($sizes) . ' Sq. ft.'
-            : null;
-
-        // Images ke URLs dynamically create karo
-        $logoImageUrl = !empty($project->project['logo_image_id']) 
-            ? $assetBaseUrl . $project->project['logo_image_id']
-            : null;
-
-        $visualImageUrl = !empty($project->project['visual_image_id']) 
-            ? $assetBaseUrl . $project->project['visual_image_id']
-            : null;
-
         return [
-            'id' => (string) $project->_id,
-            'project' => [
-                'name' => $project->project['name'],
-                'type' => $project->project['type'],
-                'logo_image_url' => $logoImageUrl,
-                'visual_image_url' => $visualImageUrl,
-                'location' => [
-                    'city' => $project->project['location']['city'] ?? null,
-                    'area' => $project->project['location']['area'] ?? null,
-                ],
-            ],
-            'configuration' => [
-                'price' => $price,
-                'size' => $sizeRange,
-            ],
+            'city' => array_values(array_unique($cities)),
+            'bhk' => array_values(array_unique($bhks)),
+            'featured' => [true, false],
+            'emerging_property' => [true, false],
+            'emerging_area' => [true, false],
         ];
-    })->values();
+    } catch (\Throwable $e) {
+        return [
+            'city' => [],
+            'bhk' => [],
+            'featured' => [true, false],
+            'emerging_property' => [true, false],
+            'emerging_area' => [true, false],
+            'message' => 'Some filters could not be processed safely.' 
+        ];
+    }
 }
 
-    // Convert price string to number
+
     public function convertPriceToNumber($priceString)
     {
         $priceString = strtolower(str_replace(',', '', $priceString));
@@ -109,6 +194,4 @@ class ProjectService
 
         return 0;
     }
-
-
 }
